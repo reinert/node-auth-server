@@ -1,0 +1,17 @@
+node_modules
+dist
+data
+ignore
+logs
+dist
+.env
+.idea
+.tern-port
+*~
+*.swp
+*.swo
+*.log
+.conf
+.npmrc
+.np
+.keys

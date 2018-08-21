@@ -1,0 +1,35 @@
+{
+  "name": "node-auth-server",
+  "version": "0.0.2",
+  "description": "JWT Authorization Server powered by Express",
+  "main": "lib/index.js",
+  "scripts": {
+    "test": "node src/test/index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "github.com/reinert/node-auth-server"
+  },
+  "keywords": [
+    "auth",
+    "authorization",
+    "jwt",
+    "express",
+    "node",
+    "cookie",
+    "bearer",
+    "token"
+  ],
+  "author": "Danilo Reinert",
+  "license": "MIT",
+  "dependencies": {
+    "cookie-parser": "^1.4.3",
+    "cors": "^2.8.4",
+    "dotenv": "^6.0.0",
+    "express": "^4.16.3",
+    "express-jwt": "^5.3.1",
+    "helmet": "^3.13.0",
+    "morgan": "^1.9.0",
+    "winston": "^3.0.0"
+  }
+}
