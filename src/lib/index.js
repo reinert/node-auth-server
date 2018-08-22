@@ -94,18 +94,32 @@ function delRefreshToken (req, res, next) {
   next()
 }
 
-function sendOk(req, res) {
-  res.sendStatus(200)
+function sendOk (req, res) {
+  return res.locals.payload
+    ? res.json(res.locals.payload)
+    : res.sendStatus(200)
 }
 
-function errorHandler(err, req, res, next) {
+function notFoundHandler (req, res, next) {
+  let err = new Error('Page Not Found');
+  err.statusCode = 404;
+  next(err);
+}
+
+function errorHandler (err, req, res, next) {
   let statusProp = Number.isInteger(err.statusCode)
     ? 'statusCode'
     : 'status'
 
   if (err[statusProp]) {
-    LOGGER.error(err.message, err)
-    res.status(err[statusProp]).send(err.message)
+    if (err.message) {
+      LOGGER.error(err.message, err)
+      res.status(err[statusProp]).send(err.message)
+    } else {
+      LOGGER.error(err)
+      res.sendStatus(err[statusProp])
+    }
+
     return
   }
 
@@ -125,6 +139,7 @@ function createServer (checkCredentials) {
       optionsSuccessStatus: 200
     }))
     .use(helmet())
+    .get('/algorithm', (req, res) => res.send(JWT_ALGORITHM))
     .get('/public-key', (req, res) => res.send(PUBLIC_KEY))
     .get('/signin',
       checkCredentials,
@@ -134,7 +149,7 @@ function createServer (checkCredentials) {
     )
     .use(cookieParser())
     .get('/refresh',
-      expJwt({ secret: PUBLIC_KEY, algorithms: [ JWT_ALGORITHM ] }),
+      expJwt({ secret: PUBLIC_KEY, algorithms: [ JWT_ALGORITHM ], ignoreExpiration: true }),
       expJwt({ secret: PUBLIC_KEY, algorithms: [ JWT_ALGORITHM ], getToken: getRefreshToken }),
       setAccessToken,
       setRefreshToken,
@@ -144,6 +159,7 @@ function createServer (checkCredentials) {
       delRefreshToken,
       sendOk
     )
+    .get('*', notFoundHandler)
     .use(errorHandler)
 }
 

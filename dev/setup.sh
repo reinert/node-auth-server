@@ -192,14 +192,24 @@ printf 'Value of --%s: %s\n' 'port' "$_arg_port"
 
 
 ### SCRIPT BEGIN
+
+# get script dir
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+  DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null && pwd )"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+done
+DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null && pwd )"
+
 # logs dir
 mkdir -p logs
 
 # generate keys
-./keygen.sh
+$DEV/keygen.sh
 
 # set enviroments variables
-cp dev/.env.template .env
+cp $DEV/.env.template .env
 
 SECRET=`echo -n password | sha256sum | awk '{print toupper($1)}'`
 sed -i 's:$ENCRYPTION_KEY:'${SECRET:0:32}':' .env

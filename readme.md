@@ -2,7 +2,7 @@ Express JWT authorization server ready to use
 
 ## Usage
 ```js
-const { createServer, LOGGER } = require('../lib/index.js')
+const { createServer, LOGGER } = require('node-auth-server')
 
 function checkCredentials (req, res, next) {
   const sub = req.get('encp')
@@ -33,9 +33,17 @@ server.listen(process.env.PORT, () => {
 Run with Docker:
 ```bash
 docker run -v <host-project-path>:<container-project-path> -w <container-project-path> -p 127.0.0.1:<host-port>:<container-port> -it <node-image> sh
+
+./dev/setup.sh
+npm install
+npm test
 ```
 
 Example:
 ```bash
 docker run -v /home/reinert/projects/auth:/home/auth -w /home/auth -p 127.0.0.1:3001:3001 -it node:alpine sh
+
+./dev/setup.sh
+npm install
+npm test
 ```

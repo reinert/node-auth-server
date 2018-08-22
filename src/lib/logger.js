@@ -12,10 +12,10 @@ const LOGGER = createLogger({
     format.colorize(),
     format.json()
   ),
-  // exitOnError: false,
-  // exceptionHandlers: [
-  //   new transports.File({ filename: `${LOG_PATH}exceptions.log` })
-  // ],
+  exitOnError: false,
+  exceptionHandlers: [
+    new transports.File({ filename: `${LOG_PATH}exceptions.log` })
+  ],
   transports: [
     new transports.File({ filename: `${LOG_PATH}debug.log`, level: 'debug' }),
     new transports.File({ filename: `${LOG_PATH}combined.log`, level: 'info' }),
