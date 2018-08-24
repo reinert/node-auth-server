@@ -8,6 +8,7 @@ const fs = require('fs')
 const helmet = require('helmet')
 const jwt = require('jsonwebtoken')
 const morgan = require('morgan')
+const uuidv4 = require('uuid/v4')
 
 const { decrypt, encrypt } = require('./encryption')
 
@@ -17,6 +18,10 @@ const JWT_ALGORITHM = 'RS256'
 const PRIVATE_KEY = fs.readFileSync(process.env.PRIVATE_KEY)
 const PUBLIC_KEY = fs.readFileSync(process.env.PUBLIC_KEY)
 
+function isHeaderStrategy() {
+  return process.env.STRATEGY && process.env.STRATEGY.toUpperCase() === 'HEADER'
+}
+
 function checkCredentials (req, res, next) {
   // TODO: implement credential verification logic
   req.sub = 'guest'
@@ -25,35 +30,68 @@ function checkCredentials (req, res, next) {
 }
 
 function setAccessToken (req, res, next) {
+  const now = Date.now()
+  const accessExp = Math.floor(now / 1000) + parseInt(process.env.ACCESS_TOKEN_EXP)
+  const refreshExp = parseInt(process.env.REFRESH_TOKEN_EXP)
+  const refreshMaxAge = refreshExp * 1000
+  const pairId = uuidv4()
+  const xsrfToken = uuidv4()
+
+  res.locals.now = now
+  res.locals.accessExp = accessExp
+  res.locals.refreshExp = Math.floor(now / 1000) + refreshExp
+  res.locals.refreshMaxAge = refreshMaxAge
+  res.locals.pairId = pairId
+  res.locals.xsrfToken = xsrfToken
+
   const payload = {
     sub: req.sub,
-    exp: Math.floor(Date.now() / 1000) + parseInt(process.env.ACCESS_TOKEN_EXP),
+    exp: accessExp,
     iss: process.env.ISSUER,
-    aud: req.query.aud
+    aud: req.query.aud,
+    pid: pairId,
+    xid: xsrfToken
   }
 
-  const token = jwt.sign(payload, PRIVATE_KEY, {algorithm: JWT_ALGORITHM})
+  const token = jwt.sign(payload, PRIVATE_KEY, { algorithm: JWT_ALGORITHM })
 
   LOGGER.debug('Signed access token with payload:', payload)
 
-  res.set('X-Access-Token', token)
+  if (isHeaderStrategy()) {
+    // return the Access Token via X-Access-Token header
+    res.set('X-Access-Token', token)
 
-  LOGGER.verbose('Set access token to X-Access-Token header')
+    LOGGER.verbose('Set access token to X-Access-Token header')
+  } else {
+    // return the Access Token via Cookie by default
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'Lax',
+      maxAge: refreshMaxAge
+    }
+
+    if (process.env.DOMAIN) cookieOptions.domain = process.env.DOMAIN
+
+    res.cookie('ACCESS-TOKEN', token, cookieOptions)
+
+    LOGGER.verbose('Set access token to ACCESS-TOKEN cookie')
+  }
 
   next()
 }
 
 function setRefreshToken (req, res, next) {
-  let exp = parseInt(process.env.REFRESH_TOKEN_EXP)
-
   const payload = {
     sub: req.sub,
-    exp: Math.floor(Date.now() / 1000) + exp,
+    exp: res.locals.refreshExp,
+    nbf: res.locals.accessExp,
     iss: process.env.ISSUER,
-    aud: req.query.aud
+    aud: req.query.aud,
+    pid: res.locals.pairId
   }
 
-  const token = jwt.sign(payload, PRIVATE_KEY, {algorithm: JWT_ALGORITHM})
+  const token = jwt.sign(payload, PRIVATE_KEY, { algorithm: JWT_ALGORITHM })
 
   LOGGER.debug('Signed refresh token with payload:', payload)
 
@@ -61,35 +99,114 @@ function setRefreshToken (req, res, next) {
 
   LOGGER.debug('Encrypted refresh token:', enc_token)
 
-  const cookieOptions = {httpOnly: true, maxAge: exp * 1000}
+  const cookieOptions = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'Strict',
+    maxAge: res.locals.refreshMaxAge
+  }
 
-  res.cookie('refresh_token', enc_token, cookieOptions)
+  res.cookie('REFRESH-TOKEN', enc_token, cookieOptions)
 
-  LOGGER.verbose('Set encrypted refresh token to refresh_token cookie')
+  LOGGER.verbose('Set encrypted refresh token to REFRESH-TOKEN cookie')
 
   next()
 }
 
-function getRefreshToken (req) {
-  if (req.cookies.refresh_token) {
-    LOGGER.verbose(`Found refresh_token cookie: ${req.cookies.refresh_token}`)
+function setXsrfToken (req, res, next) {
+  const cookieOptions = {
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'Lax',
+    maxAge: res.locals.accessExp * 1000
+  }
 
-    const token = decrypt(req.cookies.refresh_token)
+  res.cookie('XSRF-TOKEN', res.locals.xsrfToken, cookieOptions)
+
+  LOGGER.verbose('Set XSRF token to XSRF-TOKEN cookie')
+
+  next()
+}
+
+function getAccessToken (req) {
+  if (isHeaderStrategy()) {
+    if (req.headers.authorization) {
+      const [ scheme, credentials ] = req.headers.authorization.split(' ')
+
+      if (scheme === 'Bearer') {
+        LOGGER.verbose(`Found access token in Authorization header: ${req.cookies['ACCESS-TOKEN']}`)
+
+        req.accessToken = credentials
+      }
+    }
+  } else if (req.cookies['ACCESS-TOKEN']) {
+    LOGGER.verbose(`Found ACCESS-TOKEN cookie: ${req.cookies['ACCESS-TOKEN']}`)
+
+    req.accessToken = req.cookies['ACCESS-TOKEN']
+  }
+
+  if (!req.accessToken) LOGGER.verbose('Access token not found')
+
+  return req.accessToken
+}
+
+function getRefreshToken (req) {
+  if (req.cookies['REFRESH-TOKEN']) {
+    LOGGER.verbose(`Found REFRESH-TOKEN cookie: ${req.cookies['REFRESH-TOKEN']}`)
+
+    const token = decrypt(req.cookies['REFRESH-TOKEN'])
 
     LOGGER.debug('Decrypted refresh token cookie:', token)
 
-    return token
+    req.refreshToken = token
   }
 
-  LOGGER.verbose('refresh_token cookie not found')
+  if (!req.refreshToken) LOGGER.verbose('REFRESH-TOKEN cookie not found')
 
-  return null
+  return req.refreshToken
 }
 
-function delRefreshToken (req, res, next) {
-  res.clearCookie('refresh_token', { httpOnly: true })
+function checkPairId (req, res, next) {
+  const at = jwt.decode(req.accessToken)
+  const rt = jwt.decode(req.refreshToken)
 
-  LOGGER.verbose('refresh_token cookie cleared')
+  if (at.pid !== rt.pid) {
+    LOGGER.error(`[CAUTION] Attempt to refresh with a non matching token pair:`
+      + `\n  AT: ${req.accessToken}\n  RT: ${req.refreshToken}`)
+
+    const error = new Error('Token pair do not match')
+    error.status = 401
+
+    return next(error)
+  }
+
+  next()
+}
+
+function delTokens (req, res, next) {
+  if (!isHeaderStrategy()) {
+    res.clearCookie('ACCESS-TOKEN', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'Lax'
+    })
+
+    LOGGER.verbose('ACCESS-TOKEN cookie cleared')
+  }
+
+  res.clearCookie('REFRESH-TOKEN', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'Strict'
+  })
+
+  LOGGER.verbose('REFRESH-TOKEN cookie cleared')
+
+  res.clearCookie('XSRF-TOKEN', {
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'Lax'
+  })
+
+  LOGGER.verbose('XSRF-TOKEN cookie cleared')
 
   next()
 }
@@ -101,8 +218,8 @@ function sendOk (req, res) {
 }
 
 function notFoundHandler (req, res, next) {
-  let err = new Error('Page Not Found');
-  err.statusCode = 404;
+  let err = new Error();
+  err.status = 404;
   next(err);
 }
 
@@ -122,6 +239,8 @@ function errorHandler (err, req, res, next) {
 
     return
   }
+
+  console.error(err)
 
   // tweak in order to be caught by winston
   err.msg = err.message
@@ -145,18 +264,21 @@ function createServer (checkCredentials) {
       checkCredentials,
       setAccessToken,
       setRefreshToken,
+      setXsrfToken,
       sendOk
     )
     .use(cookieParser())
     .get('/refresh',
-      expJwt({ secret: PUBLIC_KEY, algorithms: [ JWT_ALGORITHM ], ignoreExpiration: true }),
+      expJwt({ secret: PUBLIC_KEY, algorithms: [ JWT_ALGORITHM ], getToken: getAccessToken, ignoreExpiration: true }),
       expJwt({ secret: PUBLIC_KEY, algorithms: [ JWT_ALGORITHM ], getToken: getRefreshToken }),
+      checkPairId,
       setAccessToken,
       setRefreshToken,
+      setXsrfToken,
       sendOk
     )
     .get('/signout',
-      delRefreshToken,
+      delTokens,
       sendOk
     )
     .get('*', notFoundHandler)

@@ -1,6 +1,6 @@
 {
   "name": "node-auth-server",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "JWT Authorization Server powered by Express",
   "main": "lib/index.js",
   "scripts": {
@@ -30,6 +30,7 @@
     "express-jwt": "^5.3.1",
     "helmet": "^3.13.0",
     "morgan": "^1.9.0",
+    "uuid": "^3.3.2",
     "winston": "^3.0.0"
   }
 }
