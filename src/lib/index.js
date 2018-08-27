@@ -213,8 +213,8 @@ function delTokens (req, res, next) {
 
 function sendOk (req, res) {
   return res.locals.payload
-    ? res.json(res.locals.payload)
-    : res.sendStatus(200)
+    ? res.send(res.locals.payload)
+    : res.sendStatus(204)
 }
 
 function notFoundHandler (req, res, next) {
@@ -249,6 +249,11 @@ function errorHandler (err, req, res, next) {
   res.sendStatus(500)
 }
 
+function sendText (res, text) {
+  res.set('Content-Type', 'text/plain')
+  res.send(text)
+}
+
 function createServer (checkCredentials) {
   return express()
     .use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev', { 'stream': LOGGER.stream }))
@@ -258,8 +263,8 @@ function createServer (checkCredentials) {
       optionsSuccessStatus: 200
     }))
     .use(helmet())
-    .get('/algorithm', (req, res) => res.send(JWT_ALGORITHM))
-    .get('/public-key', (req, res) => res.send(PUBLIC_KEY))
+    .get('/algorithm', (req, res) => sendText(res, JWT_ALGORITHM))
+    .get('/public-key', (req, res) => sendText(res, PUBLIC_KEY))
     .get('/signin',
       checkCredentials,
       setAccessToken,

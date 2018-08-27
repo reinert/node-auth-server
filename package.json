@@ -1,11 +1,8 @@
 {
   "name": "node-auth-server",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "JWT Authorization Server powered by Express",
   "main": "lib/index.js",
-  "scripts": {
-    "test": "node src/test/index.js"
-  },
   "repository": {
     "type": "git",
     "url": "github.com/reinert/node-auth-server"
